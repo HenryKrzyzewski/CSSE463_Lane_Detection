@@ -2,23 +2,31 @@ clc
 clear
 close all
 imtool close all
-training_path = "dataset\CarlaData\train\";
-training_label_path = "dataset\CarlaData\train_label";
-dinfo = dir(fullfile(training_path));
-dinfo_label = dir(fullfile(training_label_path));
-dinfo([dinfo.isdir]) = [];
-dinfo_label([dinfo_label.isdir]) = [];
 
-%Sort filenames naturally
-train_filenames = sort_nat({dinfo.name});
-label_filenames = sort_nat({dinfo_label.name});
+% Define the dataset path
+base_path = "dataset\CarlaData2Fixed\FixData";
 
-nfiles = length(dinfo);
+% Get all JPG files
+image_files = dir(fullfile(base_path, "*.jpg"));
+
+nfiles = length(image_files);
 accuracies = zeros(1, nfiles); % Preallocate for efficiency
-for j = 1 : nfiles
-%for j = 1:100
-    filename = fullfile(training_path, train_filenames{j});
-    filename_label = fullfile(training_label_path, label_filenames{j});
+
+% Initialize counters and timers
+start_time = tic;
+last_500_time = tic;
+
+%for j = 1 : nfiles
+for j = 1:501
+    image_filename = image_files(j).name;
+    label_filename = strrep(image_filename, ".jpg", ".png");
+    
+    filename = fullfile(base_path, image_filename);
+    filename_label = fullfile(base_path, label_filename);
+    
+    if ~isfile(filename_label)
+        continue; % Skip if matching label file doesn't exist
+    end
 
     img = imread(filename);
     img_label = imbinarize(imread(filename_label));
@@ -28,9 +36,9 @@ for j = 1 : nfiles
     s = hsv_img(:,:,2);
     v = hsv_img(:,:,3);
     %imtool(hsv_img)
-    lane_mask_interior = h > 0.67 & s < 0.02 & v > 0.8;
-    lane_mask_exterior = (h > 0.48 & h < 0.55) & (s > 0.04 & s < 0.12) & v > 0.83;
-
+    lane_mask_interior = h > 0.7 & s < 0.04 & s > 0.02 & v > 0.70 & v < 0.79;
+    lane_mask_exterior = (h > 0.06 & h < 0.12) & (s > 0.02 & s < 0.15) & v > 0.83;
+    %lane_mask_exterior = 0;
     diam2 = strel('diamond', 2);
     processed_interior = imclose(lane_mask_interior, diam2);
     %imtool(processed_interior)
@@ -44,9 +52,22 @@ for j = 1 : nfiles
     IoU = sum(intersection(:)) / sum(union(:));
 
     accuracies(j) = IoU; % Store IoU in the array
-end
 
-accuracy = (sum(accuracies) / length(accuracies))*100
+
+    % Timing for every 500 images
+    if mod(j, 500) == 0
+        elapsed_500 = toc(last_500_time);
+        fprintf("Time for last 500 images: %.2f seconds\n", elapsed_500);
+        last_500_time = tic; % Reset the timer
+    end
+
+    % Progress update
+    if mod(j, 1000) == 0 || j == nfiles
+        fprintf("Processed %d/%d images. Estimated time remaining: %.2f seconds.\n", j, nfiles, toc(start_time) / j * (nfiles - j));
+    end
+end
+%length(accuracies)
+accuracy = (sum(accuracies) / 501)*100
 
 function sorted_files = sort_nat(file_list)
     % Extract numeric parts from filenames
