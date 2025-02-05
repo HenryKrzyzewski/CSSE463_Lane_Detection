@@ -17,7 +17,7 @@ start_time = tic;
 last_500_time = tic;
 
 %for j = 1 : nfiles
-for j = 1:501
+for j = 1:nfiles
     image_filename = image_files(j).name;
     label_filename = strrep(image_filename, ".jpg", ".png");
     
@@ -67,7 +67,7 @@ for j = 1:501
     end
 end
 %length(accuracies)
-accuracy = (sum(accuracies) / 501)*100
+accuracy = (sum(accuracies) / nfiles)*100
 
 function sorted_files = sort_nat(file_list)
     % Extract numeric parts from filenames
