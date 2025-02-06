@@ -4,12 +4,13 @@ close all
 imtool close all
 
 % Define the dataset path
-base_path = "dataset\CarlaData2Fixed\FixData";
+base_path = "dataset\split\test";
 
 % Get all JPG files
 image_files = dir(fullfile(base_path, "*.jpg"));
 
 nfiles = length(image_files);
+nfiles = 100;
 accuracies = zeros(1, nfiles); % Preallocate for efficiency
 
 % Initialize counters and timers
@@ -17,6 +18,7 @@ start_time = tic;
 last_500_time = tic;
 
 %for j = 1 : nfiles
+totalFiles = nfiles;
 for j = 1:nfiles
     image_filename = image_files(j).name;
     label_filename = strrep(image_filename, ".jpg", ".png");
@@ -25,6 +27,9 @@ for j = 1:nfiles
     filename_label = fullfile(base_path, label_filename);
     
     if ~isfile(filename_label)
+        IoU = 0;
+        accuracies(j) = IoU;
+        totalFiles = totalFiles - 1;
         continue; % Skip if matching label file doesn't exist
     end
 
@@ -67,7 +72,7 @@ for j = 1:nfiles
     end
 end
 %length(accuracies)
-accuracy = (sum(accuracies) / nfiles)*100
+accuracy = (sum(accuracies) / totalFiles)*100
 
 function sorted_files = sort_nat(file_list)
     % Extract numeric parts from filenames
