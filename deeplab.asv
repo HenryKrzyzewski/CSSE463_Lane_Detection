@@ -1,0 +1,23 @@
+%%
+imagesize = [1280 720 3];
+numClasses = 2;
+networkName = "resnet18";
+net = deeplabv3plus(imagesize, numClasses, networkName);
+analyzeNetwork(net);
+
+%%
+function data = preprocTrainingData(data, im)
+
+%%
+imds = imageDatastore("./dataset/split/train", 'FileExtensions', 'jpg');
+classNames = ['lane', 'background'];
+labelIds = [255 0];
+pxds = pixelLabelDatastore("./dataset/split/train", classNames, labelIds, 'FileExtensions', 'png');
+cds = combine(imds, pxds);
+
+opts = trainingOptions("sgdm",...
+    MiniBatchSize=8,...
+    MaxEpochs=3);
+
+%%
+net = trainnet(cds,net,"crossentropy",opts);
