@@ -3,7 +3,7 @@ const path = require('path');
 
 const dirpath = path.join(__dirname, 'dataset/CarlaData2Fixed/FixData');
 const outputPath = path.join(__dirname, 'dataset/split');
-const pattern = /^000_([a-zA-Z_]+)_[0-9]{4}\.jpg$/i;
+const pattern = /^000_([a-zA-Z_]+)_[0-9]{4}\.png$/i;
 
 const trainSplit = 0.7;
 const testSplit = 0.2;
@@ -72,15 +72,15 @@ fs.readdir(dirpath, (err, files) => {
             }
             const fileName = images[i];
             const nameWithoutExtension = path.parse(fileName).name;
-            const maskName = nameWithoutExtension + '.png';
+            const imgName = nameWithoutExtension + '.jpg';
             
-            const sourceJpg = path.join(dirpath, fileName);
-            const destJpg = path.join(outputFolderName, fileName);
-            const sourcePng = path.join(dirpath, maskName);
-            const destPng = path.join(outputFolderName, maskName);
-            fs.copyFileSync(sourceJpg, destJpg);
-            if (fs.existsSync(sourcePng)) {
-                fs.copyFileSync(sourcePng, destPng);
+            const sourceMask = path.join(dirpath, fileName);
+            const destMask = path.join(outputFolderName, fileName);
+            const sourceImg = path.join(dirpath, imgName);
+            const destImg = path.join(outputFolderName, imgName);
+            fs.copyFileSync(sourceMask, destMask);
+            if (fs.existsSync(sourceImg)) {
+                fs.copyFileSync(sourceImg, destImg);
             }
         }
         console.log(`Category ${name} train images done`);
@@ -92,15 +92,15 @@ fs.readdir(dirpath, (err, files) => {
             }
             const fileName = images[i];
             const nameWithoutExtension = path.parse(fileName).name;
-            const maskName = nameWithoutExtension + '.png';
+            const imgName = nameWithoutExtension + '.jpg';
             
-            const sourceJpg = path.join(dirpath, fileName);
-            const destJpg = path.join(outputFolderName, fileName);
-            const sourcePng = path.join(dirpath, maskName);
-            const destPng = path.join(outputFolderName, maskName);
-            fs.copyFileSync(sourceJpg, destJpg);
-            if (fs.existsSync(sourcePng)) {
-                fs.copyFileSync(sourcePng, destPng);
+            const sourceMask = path.join(dirpath, fileName);
+            const destMask = path.join(outputFolderName, fileName);
+            const sourceImg = path.join(dirpath, imgName);
+            const destImg = path.join(outputFolderName, imgName);
+            fs.copyFileSync(sourceMask, destMask);
+            if (fs.existsSync(sourceImg)) {
+                fs.copyFileSync(sourceImg, destImg);
             }
         }
         console.log(`Category ${name} test images done`);
@@ -112,15 +112,15 @@ fs.readdir(dirpath, (err, files) => {
             }
             const fileName = images[i];
             const nameWithoutExtension = path.parse(fileName).name;
-            const maskName = nameWithoutExtension + '.png';
+            const imgName = nameWithoutExtension + '.jpg';
             
-            const sourceJpg = path.join(dirpath, fileName);
-            const destJpg = path.join(outputFolderName, fileName);
-            const sourcePng = path.join(dirpath, maskName);
-            const destPng = path.join(outputFolderName, maskName);
-            fs.copyFileSync(sourceJpg, destJpg);
-            if (fs.existsSync(sourcePng)) {
-                fs.copyFileSync(sourcePng, destPng);
+            const sourceMask = path.join(dirpath, fileName);
+            const destMask = path.join(outputFolderName, fileName);
+            const sourceImg = path.join(dirpath, imgName);
+            const destImg = path.join(outputFolderName, imgName);
+            fs.copyFileSync(sourceMask, destMask);
+            if (fs.existsSync(sourceImg)) {
+                fs.copyFileSync(sourceImg, destImg);
             }
         }
         console.log(`Category ${name} validation images done`);
