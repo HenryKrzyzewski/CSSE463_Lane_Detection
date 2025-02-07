@@ -177,26 +177,46 @@
 % 
 % imshow(img);
 % title(['Predicted: ', char(predictedLabel)]);
+tic; % Start the timer
 
 % Load trained network
 load('trainedAlexNet_LaneDetection.mat', 'trainedNet');
 
 % Define image path
-imagePath = 'C:\Users\beloremd\Desktop\CSSE463_Lane_Detection\dataset\FixData\000_Both_left_curve_0009.jpg';
-
+imagePath = "dataset\split\test\000_Both_straight_4138.jpg";
+labelPath = "dataset\split\test\000_Both_straight_4138.png";
+labelMask = imbinarize(imread(labelPath));
 % Define patch size
 patchSize = 10;
 
 % Generate lane mask
 laneMask = getLaneMask(imagePath, patchSize, trainedNet);
 
+
+%% post processing
+laneMaskModified = laneMask;
+
+SE = strel('disk', 12);         % Create a 10x10 square structuring element
+laneMaskModified = imclose(laneMaskModified, SE); % Apply morphological closing
+laneMaskModified = bwareaopen(laneMaskModified, 1400);
 % Display the results
 figure;
-subplot(1, 2, 1);
+subplot(2, 2, 1);
 imshow(imread(imagePath));
 title('Original Image');
 
-subplot(1, 2, 2);
+subplot(2, 2, 2);
+imshow(labelMask);
+title('Lane Detection label Mask');
+
+subplot(2, 2, 3);
 imshow(laneMask);
 title('Lane Detection Mask');
 
+subplot(2, 2, 4);
+imshow(laneMaskModified);
+title('Lane Detection Mask Modified');
+
+[IoU, TPR, FPR, Precision] = computeMaskMetrics(laneMask, labelMask);
+[IoUModified, TPRModified, FPRModified, PrecisionModified] = computeMaskMetrics(laneMaskModified, labelMask);
+fprintf('Elapsed time: %.2f seconds\n', toc); % Print elapsed time
