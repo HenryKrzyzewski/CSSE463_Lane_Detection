@@ -10,7 +10,7 @@ base_path = "dataset\split\test";
 image_files = dir(fullfile(base_path, "*.jpg"));
 
 nfiles = length(image_files);
-nfiles = 1000;
+nfiles = 1;
 accuracies = zeros(1, nfiles); % Preallocate for efficiency
 
 % Initialize counters and timers
@@ -52,9 +52,14 @@ for j = 1:nfiles
     result = processed_interior + processed_exterior;
     %imtool(result)
     %imtool(img_label)
+    intersection = result & img_label;
+    union = result | img_label;
+    IoU = sum(intersection(:)) / sum(union(:));
+
+    accuracies(j) = IoU; % Store IoU in the array
 
     [IoU, TPR, FPR, Precision] = computeStats(result, img_label);
-    accuracies(j) = IoU; % Store IoU in the array
+
     % Timing for every 500 images
     if mod(j, 500) == 0
         elapsed_500 = toc(last_500_time);
