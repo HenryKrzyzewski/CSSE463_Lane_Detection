@@ -1,27 +1,22 @@
-function data = preprocessTrainingData(data, imageSize)
+function [data, infoOut] = preprocessTrainingData(data, info, imageSize)
+% Resize the training image and associated pixel label image.
 data{1} = imresize(data{1}, imageSize);
 data{2} = imresize(data{2}, imageSize);
-end
-
-function data = preprocessPixelData(data, imageSize)
-data{1} = imresize(data{1}, imageSize);
-data{2} = imresize(data{2}, imageSize);
-data{1} = repmat(data{1},1,1,3);
+infoOut = info;
 end
 
 %%
 
 imageDir = "./dataset/split/train";
-imds = imageDatastore(imageDir);
+imds = imageDatastore(imageDir, 'FileExtensions', '.jpg');
 labelDir = "./dataset/split/train";
-classNames = ["triangle","background"];
-labelIDs   = [1 0];
-pxds = pixelLabelDatastore(labelDir,classNames,labelIDs);
+classNames = ["lane","background"];
+labelIDs   = {[1; 2; 3; 4; 5; 6; 7; 8; 9] 0};
+pxds = pixelLabelDatastore(labelDir, classNames, labelIDs, 'FileExtensions', '.png');
 imageSize = [256 256];
 numClasses = numel(classNames);
-imtds = transform(imds, @(data)preprocessTrainingData(data, imageSize));
-pxtds = transform(pxds, @(data)preprocessPixelData(data, imageSize));
-cds = combine(imtds,pxtds);
+cds = combine(imds, pxds);
+tds = transform(cds, @(data, info)preprocessTrainingData(data, info, imageSize), 'IncludeInfo', true);
 fprintf("Done\n");
 
 %%
@@ -30,4 +25,4 @@ opts = trainingOptions("sgdm",...
     MiniBatchSize=8,...
     MaxEpochs=3);
 
-net = trainnet(cds,net,"crossentropy",opts);
+net = trainnet(tds,net,"crossentropy",opts);
