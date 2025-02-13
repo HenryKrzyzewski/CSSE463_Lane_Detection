@@ -23,6 +23,26 @@ fprintf("Done\n");
 net = deeplabv3plus(imageSize,numClasses,"resnet18");
 opts = trainingOptions("sgdm",...
     MiniBatchSize=8,...
+    Plots="training-progress",...
     MaxEpochs=3);
 
+%%
 net = trainnet(tds,net,"crossentropy",opts);
+save('./deepnet.mat', net);
+
+%%
+testImg = imread('dataset/split/test/000_Both_left_curve_0009.jpg');
+testImg = imresize(testImg, imageSize);
+prediction = semanticseg(testImg, net);
+predictionMask = zeros(size(prediction));
+predictionMask(prediction == 'C2') = 1;
+result = labeloverlay(testImg, prediction);
+%%
+figure;
+subplot(1, 3, 1);
+imshow(testImg);
+subplot(1, 3, 2);
+imshow(predictionMask);
+subplot(1, 3, 3);
+imshow(result);
+
