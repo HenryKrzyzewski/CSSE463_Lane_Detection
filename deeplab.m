@@ -21,10 +21,13 @@ fprintf("Done\n");
 
 %%
 net = deeplabv3plus(imageSize,numClasses,"resnet18");
+%%
+checkpointPath = "./deeplab_checkpoints";
 opts = trainingOptions("sgdm",...
     MiniBatchSize=8,...
     Plots="training-progress",...
-    MaxEpochs=3);
+    MaxEpochs=15, ...
+    CheckpointPath=checkpointPath);
 
 %%
 net = trainnet(tds,net,"crossentropy",opts);
@@ -84,42 +87,50 @@ title('Overlay on Original');
 %% 
 testDir = "./dataset/split/test";
 testImages = imageDatastore(testDir, 'FileExtensions', '.jpg');
-testLabels = pixelLabelDatastore(testDir, classNames, labelIDs, 'FileExtensions', '.png');
+testLabels = imageDatastore(testDir, 'FileExtensions', '.png');
 
-tdsTest = combine(testImages, testLabels);
-iouScores = zeros(numel(classNames), 1);
+numFiles = 100;%numel(testImages.Files);
+iouScores = zeros(1, numFiles);
 
-for i = 1:numel(testImages.Files)
+fprintf("Started evaluating...\n");
+startTime = tic;
+for i = 1:numFiles
     % Read test image and ground truth label
-    data = read(tdsTest);
-    testImg = imresize(data{1}, imageSize);
-    groundTruth = imresize(uint8(data{2}), imageSize, 'nearest');
+    testImg = imread(testImages.Files{i});
+    testImg = imresize(testImg, imageSize);
+    groundTruth = imread(testLabels.Files{i});
+    groundTruth = imresize(groundTruth, imageSize);
     
     % Perform segmentation
     prediction = semanticseg(testImg, net);
-    predictionMask = zeros(size(prediction));
-    for c = 1:numClasses
-        predictionMask(strcmp(prediction, classNames{c})) = c;
-    end
-    
-    % Compute IoU for each class
-    for c = 1:numClasses
-        predMask = predictionMask == c;
-        gtMask = groundTruth == c;
-        
-        intersection = sum(predMask(:) & gtMask(:));
-        union = sum(predMask(:) | gtMask(:));
-        
-        if union > 0
-            iouScores(c) = iouScores(c) + (intersection / union);
-        end
+    predMask = zeros(size(prediction));
+    predMask(prediction == 'C1') = 1;
+    trueMask = logical(groundTruth);
+
+    % figure;
+    % subplot(2, 1, 1);
+    % imshow(predMask);
+    % subplot(2, 1, 2);
+    % imshow(trueMask);
+
+    [iou, ~, ~, ~] = computeMaskMetrics(predMask, trueMask);
+
+    iouScores(1, i) = iou;
+
+    if rem(i, 50) == 0 || i == 1
+        elapsedTime = toc(startTime);
+        avgTimePerIter = elapsedTime / i;
+        remainingTime = avgTimePerIter * (numFiles - i);
+        hours = floor(remainingTime / 3600);
+        minutes = floor(mod(remainingTime, 3600) / 60);
+        seconds = floor(mod(remainingTime, 60));
+
+        fprintf("Finished with %d/%d. Elapsed %.2fs. Remaining: %02d:%02d:%02d\n", i, numFiles, elapsedTime, hours, minutes, seconds);
     end
 end
 
+%%
 % Average IoU over test set
-iouScores = iouScores / numel(tdsTest.Files);
+averageIou = sum(iouScores) / numFiles;
 
-disp("Intersection over Union for each class:");
-for c = 1:numClasses
-    fprintf("%s: %.4f\n", classNames(c), iouScores(c));
-end
+fprintf("Average IoU: %.4f\n", averageIou);
