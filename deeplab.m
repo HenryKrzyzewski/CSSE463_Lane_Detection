@@ -46,3 +46,47 @@ imshow(predictionMask);
 subplot(1, 3, 3);
 imshow(result);
 
+
+%% 
+testDir = "./dataset/split/test";
+testImages = imageDatastore(testDir, 'FileExtensions', '.jpg');
+testLabels = pixelLabelDatastore(testDir, classNames, labelIDs, 'FileExtensions', '.png');
+
+tdsTest = combine(testImages, testLabels);
+iouScores = zeros(numel(classNames), 1);
+
+for i = 1:numel(tdsTest.Files)
+    % Read test image and ground truth label
+    data = read(tdsTest);
+    testImg = imresize(data{1}, imageSize);
+    groundTruth = imresize(uint8(data{2}), imageSize, 'nearest');
+    
+    % Perform segmentation
+    prediction = semanticseg(testImg, net);
+    predictionMask = zeros(size(prediction));
+    for c = 1:numClasses
+        predictionMask(strcmp(prediction, classNames{c})) = c;
+    end
+    
+    % Compute IoU for each class
+    for c = 1:numClasses
+        predMask = predictionMask == c;
+        gtMask = groundTruth == c;
+        
+        intersection = sum(predMask(:) & gtMask(:));
+        union = sum(predMask(:) | gtMask(:));
+        
+        if union > 0
+            iouScores(c) = iouScores(c) + (intersection / union);
+        end
+    end
+end
+
+% Average IoU over test set
+iouScores = iouScores / numel(tdsTest.Files);
+
+disp("Intersection over Union for each class:");
+for c = 1:numClasses
+    fprintf("%s: %.4f\n", classNames(c), iouScores(c));
+end
+
