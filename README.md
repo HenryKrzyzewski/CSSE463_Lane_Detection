@@ -1,5 +1,7 @@
 # Setup (Dataset Structure)
 Download the dataset and place it in the dataset folder (a .gitkeep file should keep it in the repo; the dataset itself is gitignore'd). The file structure should go dataset > split > (train/test/validation) > (individual files)
+Original: https://glutamat42.github.io/Ultra-Fast-Lane-Detection/
+Modified and cleaned dataset: https://rosehulman-my.sharepoint.com/:u:/g/personal/gaulldj_rose-hulman_edu/EU38xbctdNFHrWE2X5o7a8UB22JSxafzbOccgw3YSnNNQw?e=fhrWMT
 
 # Required MATLAB Toolboxes:
 * Image Processing Toolbox
