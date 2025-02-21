@@ -19,21 +19,26 @@ cds = combine(imds, pxds);
 tds = transform(cds, @(data, info)preprocessTrainingData(data, info, imageSize), 'IncludeInfo', true);
 fprintf("Done\n");
 
-%%
+
 net = deeplabv3plus(imageSize,numClasses,"resnet18");
-%%
+%
 checkpointPath = "./deeplab_checkpoints";
 opts = trainingOptions("sgdm",...
     MiniBatchSize=8,...
     Plots="training-progress",...
-    MaxEpochs=15, ...
+    MaxEpochs=2, ...
     CheckpointPath=checkpointPath);
 
+%
 %%
+load('deeplab_checkpoints/net_checkpoint__1592__2025_02_17__13_28_21.mat','net');
 net = trainnet(tds,net,"crossentropy",opts);
+%%
+%net = trainnet(tds,net,"crossentropy",opts);
 
 %%
 save("./deepnet.mat", 'net');
+fprintf("saved\n");
 
 %%
 testImg = imread('dataset/split/test/000_Both_left_curve_0009.jpg');
@@ -55,6 +60,7 @@ prediction2 = semanticseg(testImg2, net);
 predictionMask2 = zeros(size(prediction2));
 predictionMask2(prediction2 == 'C1') = 1;
 result2 = labeloverlay(testImg2, prediction2);
+
 
 figure;
 
@@ -89,8 +95,9 @@ testDir = "./dataset/split/test";
 testImages = imageDatastore(testDir, 'FileExtensions', '.jpg');
 testLabels = imageDatastore(testDir, 'FileExtensions', '.png');
 
-numFiles = 100;%numel(testImages.Files);
-iouScores = zeros(1, numFiles);
+numFiles = numel(testImages.Files);
+% Initialize the array to store IoU, TPR, FPR, and Precision
+metrics = cell(numFiles, 5); % numFiles x 5 array: columns for IoU, TPR, FPR, Precision, and image names
 
 fprintf("Started evaluating...\n");
 startTime = tic;
@@ -107,17 +114,26 @@ for i = 1:numFiles
     predMask(prediction == 'C1') = 1;
     trueMask = logical(groundTruth);
 
-    % figure;
-    % subplot(2, 1, 1);
-    % imshow(predMask);
-    % subplot(2, 1, 2);
-    % imshow(trueMask);
+    % Compute the metrics: IoU, TPR, FPR, Precision
+    [IoU, TPR, FPR, Precision] = computeMaskMetrics(predMask, trueMask);
 
-    [iou, ~, ~, ~] = computeMaskMetrics(predMask, trueMask);
+    % Store the IoU score in the first column
+    metrics{i, 1} = IoU;  % Store IoU score
+    
+    % Store the TPR in the second column
+    metrics{i, 2} = TPR;  % Store True Positive Rate
+    
+    % Store the FPR in the third column
+    metrics{i, 3} = FPR;  % Store False Positive Rate
+    
+    % Store the Precision in the fourth column
+    metrics{i, 4} = Precision;  % Store Precision
+    
+    % Store the image name (without path) in the fifth column
+    [~, imageName, ~] = fileparts(testImages.Files{i});  % Extract image name without path and extension
+    metrics{i, 5} = imageName;  % Store image name
 
-    iouScores(1, i) = iou;
-
-    if rem(i, 50) == 0 || i == 1
+    if rem(i, 500) == 0 || i == 1
         elapsedTime = toc(startTime);
         avgTimePerIter = elapsedTime / i;
         remainingTime = avgTimePerIter * (numFiles - i);
@@ -129,8 +145,120 @@ for i = 1:numFiles
     end
 end
 
-%%
-% Average IoU over test set
-averageIou = sum(iouScores) / numFiles;
+%% 
+% Count NaN values and set them to zero for IoU, TPR, FPR, Precision
+nanCountIoU = sum(isnan(cell2mat(metrics(:, 1))));  % Count NaNs in the IoU column
+nanCountTPR = sum(isnan(cell2mat(metrics(:, 2))));  % Count NaNs in the TPR column
+nanCountFPR = sum(isnan(cell2mat(metrics(:, 3))));  % Count NaNs in the FPR column
+nanCountPrecision = sum(isnan(cell2mat(metrics(:, 4))));  % Count NaNs in the Precision column
 
-fprintf("Average IoU: %.4f\n", averageIou);
+% Replace NaN values with zero for all metrics
+metrics(isnan(cell2mat(metrics(:, 1))), 1) = {0};  % Set NaN IoU values to zero
+metrics(isnan(cell2mat(metrics(:, 2))), 2) = {0};  % Set NaN TPR values to zero
+metrics(isnan(cell2mat(metrics(:, 3))), 3) = {0};  % Set NaN FPR values to zero
+metrics(isnan(cell2mat(metrics(:, 4))), 4) = {0};  % Set NaN Precision values to zero
+
+fprintf("Number of NaN values - IoU: %d, TPR: %d, FPR: %d, Precision: %d\n", ...
+    nanCountIoU, nanCountTPR, nanCountFPR, nanCountPrecision);
+
+% Average metrics over test set
+averageIoU = sum(cell2mat(metrics(:, 1))) / numFiles;
+averageTPR = sum(cell2mat(metrics(:, 2))) / numFiles;
+averageFPR = sum(cell2mat(metrics(:, 3))) / numFiles;
+averagePrecision = sum(cell2mat(metrics(:, 4))) / numFiles;
+
+fprintf("Average IoU: %.4f\n", averageIoU);
+fprintf("Average TPR: %.4f\n", averageTPR);
+fprintf("Average FPR: %.4f\n", averageFPR);
+fprintf("Average Precision: %.4f\n", averagePrecision);
+
+%%
+load('metrics_27Epochs.mat');
+
+%%
+numFiles = length(metrics);
+metrics2 = cell(numFiles, 5);
+for i = 1:numFiles
+    row = metrics(i,:);
+    tokens = regexp(row{5}, "^000_([a-zA-Z_]+)_[0-9]{4}$", 'tokens');
+    cat = tokens{1}{1};
+    metrics2{i,1} = cat;
+    metrics2{i,2} = row{1};
+    metrics2{i,3} = row{2};
+    metrics2{i,4} = row{3};
+    metrics2{i,5} = row{4};
+end
+
+metrics_table = cell2table(metrics2);
+metrics_table.Properties.VariableNames = ["Category", "IoU", "tpr", "fpr", "precision"];
+metrics_table = convertvars(metrics_table,@iscellstr,"string");
+metrics_table.Category = categorical(metrics_table.Category);
+result = groupsummary(metrics_table,"Category","mean");
+result = sortrows(result, "mean_IoU", 'descend');
+
+%%
+load('final_checkpoint_deeplab.mat');
+load('metrics_27Epochs.mat');
+
+%%
+metrics = cell2table(metrics);
+
+%%
+metrics.Properties.VariableNames = ["IoU", "tpr", "fpr", "precision", "Name"];
+
+%%
+metricsToSearch = metrics(metrics.IoU >= 0.01,:);
+[minVal, minIndex] = min(metricsToSearch{:,1});
+minName = metricsToSearch.Name{minIndex};
+minRow = metricsToSearch(minIndex,:);
+
+imageSize = [256 256];
+testImg = imread(['./dataset/split/test/', minName, '.jpg']);
+testImg = imresize(testImg, imageSize);
+groundTruth = imread(['./dataset/split/test/', minName, '.png']);
+groundTruth = imresize(groundTruth, imageSize);
+
+% Perform segmentation
+prediction = semanticseg(testImg, net);
+predMask = zeros(size(prediction));
+predMask(prediction == 'C1') = 1;
+trueMask = logical(groundTruth);
+
+figure;
+subplot(1, 3, 1);
+imshow(testImg);
+title('Source Image');
+subplot(1, 3, 2);
+imshow(trueMask);
+title('Ground Truth');
+subplot(1, 3, 3);
+imshow(predMask);
+title('Predicted Mask');
+
+%%
+[maxVal, maxIndex] = max(metrics{:,1});
+maxName = metrics.Name{maxIndex};
+maxRow = metrics(maxIndex, :);
+
+imageSize = [256 256];
+testImg = imread(['./dataset/split/test/', maxName, '.jpg']);
+testImg = imresize(testImg, imageSize);
+groundTruth = imread(['./dataset/split/test/', maxName, '.png']);
+groundTruth = imresize(groundTruth, imageSize);
+
+% Perform segmentation
+prediction = semanticseg(testImg, net);
+predMask = zeros(size(prediction));
+predMask(prediction == 'C1') = 1;
+trueMask = logical(groundTruth);
+
+figure;
+subplot(1, 3, 1);
+imshow(testImg);
+title('Source Image');
+subplot(1, 3, 2);
+imshow(trueMask);
+title('Ground Truth');
+subplot(1, 3, 3);
+imshow(predMask);
+title('Predicted Mask');

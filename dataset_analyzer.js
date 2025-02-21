@@ -24,6 +24,11 @@ const handleDir = (err, files) => {
         }
     });
     console.log(categoryCounts);
+    let sum = 0;
+    for (let c in categoryCounts) {
+        sum += categoryCounts[c];
+    }
+    console.log(`Sum: ${sum}`);
 };
 
 fs.readdir(trainPath, handleDir);
