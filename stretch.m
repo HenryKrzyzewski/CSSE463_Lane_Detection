@@ -3,17 +3,24 @@ clear;
 close all;
 imtool close all;
 
-% Define dataset path
 base_path = "dataset/FixData";
 image_files = dir(fullfile(base_path, "*.jpg"));
 nfiles = length(image_files);
 
-% Initialize timing
 start_time = tic;
 last_500_time = tic;
 
-for j = 300:300
-    % Load image and corresponding label
+total_IOU = 0;
+highest_IOU = 0;
+lowest_IOU = 1;
+highest_IOU_filename = "";
+lowest_IOU_filename = "";
+
+total_TP = 0;
+total_FP = 0;
+total_TN = 0;
+total_FN = 0;
+for j = 700:700
     image_filename = image_files(j).name;
     label_filename = strrep(image_filename, ".jpg", ".png");
     
@@ -24,140 +31,178 @@ for j = 300:300
         continue; % Skip if label file doesn't exist
     end
 
+    img_truth = imread(filename_label);
+    temp = imbinarize(img_truth);
+
     img = imread(filename);
-    img = imresize(img, 1.0, 'nearest');
-    image_width = size(img, 2); % Get full image width
+    [height, width, num_channels] = size(img);
     img_label = imbinarize(imread(filename_label));
-    
-    % Convert to HSV and extract channels
-    hsv_img = rgb2hsv(img);
-    h = hsv_img(:,:,1);
-    s = hsv_img(:,:,2);
-    v = hsv_img(:,:,3);
-    
-    % Lane detection masks
-    lane_mask_white1 = (h > 0.05 & h < 0.12) & (s < 0.12 & s > 0.05) & (v > 0.82 & v < 0.95);
-    lane_mask_white2 = (h > 0.64 & h < 0.8) & (s < 0.05 & s > 0.00) & (v > 0.7 & v < 0.87);
-    lane_mask = lane_mask_white1 | lane_mask_white2;
 
-    % Morphological operations
-    se_disk = strel('disk', 6);
-    se_diam = strel('diamond', 3);
-    se_vert_line = strel('line', 5, 90);
-    se_vert_line_right = strel('line', 10, 60);
+    original_size = [height, width];
+
+    model = load('net_checkpoint__1592__2025_02_17__13_28_21.mat');
+    model = model.net;
+    image_size = [256 256];
+    img = imresize(img, image_size);
+    prediction = semanticseg(img, model);
+    pred_mask = zeros(size(prediction));
+    pred_mask(prediction == 'C1') = 1;
+
+    pred_mask = imresize(pred_mask, original_size);
     
-    filtered_result = bwareaopen(lane_mask, 80);
-    processed_mask = imclose(filtered_result, se_vert_line);
-    % processed_mask = imdilate(processed_mask, se_diam);
-    % processed_mask = imdilate(processed_mask, se_vert_line);
-    % processed_mask = imerode(processed_mask, se_disk);
+    pred_mask(1:floor(end/2.7), :) = 0;
 
-    % Identify connected components (individual lane markings)
-    cc = bwconncomp(processed_mask);
-    stats = regionprops(cc, 'PixelList');  % Extract pixel coordinates
+    imtool(pred_mask);
 
-    % Display original image
-    figure; imshow(img); hold on;
+    filtered_result = bwareaopen(pred_mask, 300);
+
+    se_disk = strel('disk', 5);
+    se_diam = strel('diamond', 5);
+    filtered_result = imclose(filtered_result, se_disk);
+
+    imtool(filtered_result);
+
+    cc = bwconncomp(filtered_result);
+    stats = regionprops(cc, 'PixelList');
+
+    img = imresize(img, original_size);
+    % figure; imshow(img); hold on;
     title(['Lane Detection - Image ', num2str(j)]);
 
-    [img_height, img_width, ~] = size(img);
-    y_min_threshold = img_height * 0.31;
-    y_max_threshold = img_height * 0.8;
+    % Create a blank bitmask for the lines
+    line_mask = zeros(height, width);
 
-    % Process each region separately
+    y_min_threshold = height * 0.31;
+    y_max_threshold = height * 0.8;
+
     for i = 1:numel(stats)
-        % Extract pixel coordinates for this region
         pixels = stats(i).PixelList;
-        if isempty(pixels)
-            continue; % Skip empty regions
+        if size(pixels,1) < 2
+           continue;
         end
+    
+        region_mask = false(height, width);
+        idx = sub2ind([height, width], pixels(:,2), pixels(:,1));
+        region_mask(idx) = true;
 
-        % Compute bounding box manually
-        xMin = min(pixels(:,1));
-        xMax = max(pixels(:,1));
-        yMin = min(pixels(:,2));
-        yMax = max(pixels(:,2));
-
-        if yMax < y_min_threshold || yMin > y_max_threshold
+        imtool(region_mask)
+        
+        [H, theta, rho] = hough(region_mask);
+        
+        peaks = houghpeaks(H, 1, 'Threshold', ceil(0.3 * max(H(:))));
+        
+        lines = houghlines(region_mask, theta, rho, peaks, 'FillGap', 5, 'MinLength', 7);
+        
+        if isempty(lines)
+             continue;
+        end
+        
+        line_lengths = arrayfun(@(l) norm(l.point1 - l.point2), lines);
+        [~, longest_idx] = max(line_lengths);
+        selected_line = lines(longest_idx);
+        
+        pt1 = selected_line.point1;
+        pt2 = selected_line.point2;
+        
+        if pt2(1) ~= pt1(1)
+            slope = (pt2(2) - pt1(2)) / (pt2(1) - pt1(1));
+            intercept = pt1(2) - slope * pt1(1);
+        else
             continue;
         end
-
-        % Ensure valid cropping dimensions
-        width = max(1, xMax - xMin + 1);
-        height = max(1, yMax - yMin + 1);
-
-        % Create a cropped mask for the current region
-        region_mask = false(size(processed_mask));
-        idx = sub2ind(size(region_mask), pixels(:,2), pixels(:,1)); % Convert pixel coordinates to index
-        region_mask(idx) = true;
-        region_crop = imcrop(region_mask, [xMin, yMin, width, height]);
-
-        % Apply Hough Transform to the cropped region
-        [H, theta, rho] = hough(region_crop);
-        peaks = houghpeaks(H, 1, 'threshold', ceil(0.3 * max(H(:)))); % Get strongest line
-        lines = houghlines(region_crop, theta, rho, peaks, 'FillGap', 10, 'MinLength', 30);
-
-        if isempty(lines)
-            continue; % Skip if no lines detected
-        end
-
-        % Select the strongest line (longest detected)
-        max_len = 0;
-        best_line = [];
-        for k = 1:length(lines)
-            p1 = lines(k).point1;
-            p2 = lines(k).point2;
-            line_len = norm(p1 - p2);
-            if line_len > max_len
-                max_len = line_len;
-                best_line = lines(k);
-            end
-        end
-
-        % Ensure a line was selected
-        if ~isempty(best_line)
-            p1 = best_line.point1;
-            p2 = best_line.point2;
-
-            % Compute slope and intercept of the selected line
-            slope = (p2(2) - p1(2)) / (p2(1) - p1(1) + eps); % Avoid division by zero
-            intercept = p1(2) - slope * p1(1);
-
-            % Compute the center of the detected white dash
-            xCenter = mean(pixels(:,1));
-            yCenter = mean(pixels(:,2));
-
-            % Recompute the intercept to make the line pass through the center
-            intercept = yCenter - slope * xCenter;
-
-            % Extend the line symmetrically across the full image width
-            extension_length = max(xMax - xMin, yMax - yMin) * 2; % Extend beyond region
-            x1_extended = xCenter - extension_length / 2;
-            x2_extended = xCenter + extension_length / 2;
-            y1_extended = slope * x1_extended + intercept;
-            y2_extended = slope * x2_extended + intercept;
-
-            % Plot corrected lane line centered on the white dash
-            plot([x1_extended, x2_extended], [y1_extended, y2_extended], 'r-', 'LineWidth', 3);
-        end
+        
+        y1_extended = height;    
+        y2_extended = height * 0.3;  
+        
+        x1_extended = (y1_extended - intercept) / slope;
+        x2_extended = (y2_extended - intercept) / slope;
+        
+        plot([x1_extended, x2_extended], [y1_extended, y2_extended], 'r-', 'LineWidth', 6);
+        
+        line_mask = insertShape(line_mask, 'Line', [x1_extended, y1_extended, x2_extended, y2_extended], 'Color', 'white', 'LineWidth', 20);
     end
+
+    line_mask = im2bw(line_mask);
+
+    imtool(img);
+    imtool(line_mask);
 
     hold off;
 
-    % Display processed binary mask
-    figure; imshow(processed_mask);
-    title('Processed Mask');
+    intersection = sum((line_mask(:) & img_label(:))); 
+    union = sum((line_mask(:) | img_label(:)));  
 
-    % Timing for every 500 images
+    if union == 0
+        IoU = 0;
+    else
+        IoU = intersection / union;
+    end
+
+    total_IOU = total_IOU + IoU;
+
+    if IoU > highest_IOU
+        highest_IOU = IoU;
+        highest_IOU_filename = image_filename;
+    end
+
+    if IoU < lowest_IOU
+        lowest_IOU = IoU;
+        lowest_IOU_filename = image_filename;
+    end
+
+    TP = sum(line_mask(:) & img_label(:));
+    FP = sum(line_mask(:) & ~img_label(:));
+    TN = sum(~line_mask(:) & ~img_label(:));
+    FN = sum(~line_mask(:) & img_label(:));
+
+    total_TP = total_TP + TP;
+    total_FP = total_FP + FP;
+    total_TN = total_TN + TN;
+    total_FN = total_FN + FN;
+
+    precision = TP / (TP + FP);
+    TPR = TP / (TP + FN);
+    FPR = FP / (FP + TN);
+
+
+    fprintf("IoU for image %d (%s): %.4f\nTP: %.4f\nFP: %.4f\nPrecision: %.4f\n\n", ...
+            j, image_filename, IoU, TPR, FPR, precision);
+  
+
+    % Display processed binary mask
+    % figure; imshow(filtered_result);
+    % title('Processed Mask');
+
     if mod(j, 500) == 0
         elapsed_500 = toc(last_500_time);
         fprintf("Time for last 500 images: %.2f seconds\n", elapsed_500);
         last_500_time = tic;
     end
 
-    % Progress update
     if mod(j, 1000) == 0 || j == nfiles
         fprintf("Processed %d/%d images. Estimated time remaining: %.2f seconds.\n", ...
                 j, nfiles, toc(start_time) / j * (nfiles - j));
     end
 end
+
+%% new
+
+mean_IOU = total_IOU / 1264;
+TPR = total_TP / max(total_TP + total_FN, 1); % Sensitivity
+FPR = total_FP / max(total_FP + total_TN, 1); % False Positive Rate
+TNR = total_TN / max(total_TN + total_FP, 1); % Specificity
+FNR = total_FN / max(total_FN + total_TP, 1); % Miss Rate
+
+fprintf("\n===== Overall Results =====\n");
+fprintf("Mean IoU: %.4f\n", mean_IOU);
+fprintf("TPR (Recall): %.4f\n", TPR);
+fprintf("FPR (Fall-out): %.4f\n", FPR);
+fprintf("TNR (Specificity): %.4f\n", TNR);
+fprintf("FNR (Miss Rate): %.4f\n", FNR);
+fprintf("Highest IoU: %.4f (%s)\n", highest_IOU, highest_IOU_filename);
+fprintf("Lowest IoU: %.4f (%s)\n", lowest_IOU, lowest_IOU_filename);
+
+imwrite(imread(fullfile(base_path, highest_IOU_filename)), "highest_IOU_image.jpg");
+imwrite(imread(fullfile(base_path, lowest_IOU_filename)), "lowest_IOU_image.jpg");
+
+fprintf("Saved highest and lowest IoU images.\n");
